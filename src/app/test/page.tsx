@@ -10,6 +10,9 @@ export default function TestPage() {
   const [answers, setAnswers] = useState<(number | null)[]>(
     new Array(questions.length).fill(null)
   );
+  const [locked, setLocked] = useState<boolean[]>(
+    new Array(questions.length).fill(false)
+  );
   const [timeLeft, setTimeLeft] = useState(TEST_DURATION_MINUTES * 60);
   const [startTime] = useState(Date.now());
   const [submitting, setSubmitting] = useState(false);
@@ -82,9 +85,13 @@ export default function TestPage() {
   }, [timeLeft, handleSubmit]);
 
   const selectAnswer = (optionIndex: number) => {
+    if (locked[currentQuestion]) return;
     const newAnswers = [...answers];
     newAnswers[currentQuestion] = optionIndex;
     setAnswers(newAnswers);
+    const newLocked = [...locked];
+    newLocked[currentQuestion] = true;
+    setLocked(newLocked);
   };
 
   const formatTime = (seconds: number) => {
@@ -136,43 +143,89 @@ export default function TestPage() {
           </h2>
 
           <div className="space-y-3">
-            {q.options.map((option, index) => (
-              <div
-                key={index}
-                onClick={() => selectAnswer(index)}
-                className={`option-card ${
-                  answers[currentQuestion] === index ? "selected" : ""
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5 ${
-                      answers[currentQuestion] === index
-                        ? "border-[#FFD700] bg-[#FFD700]"
-                        : "border-gray-300"
-                    }`}
-                  >
-                    {answers[currentQuestion] === index && (
-                      <svg
-                        className="w-3.5 h-3.5 text-[#1a1a2e]"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    )}
+            {q.options.map((option, index) => {
+              const isLocked = locked[currentQuestion];
+              const isSelected = answers[currentQuestion] === index;
+              const isCorrectOption = q.correctAnswer === index;
+              const wasWrongChoice = isLocked && isSelected && !isCorrectOption;
+              const showAsCorrect = isLocked && isCorrectOption;
+
+              let cardClass = "option-card ";
+              if (showAsCorrect) {
+                cardClass += "!border-green-400 !bg-green-50";
+              } else if (wasWrongChoice) {
+                cardClass += "!border-red-300 !bg-red-50";
+              } else if (isSelected) {
+                cardClass += "selected";
+              }
+              if (isLocked) {
+                cardClass += " cursor-default";
+              }
+
+              let dotClass =
+                "flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5 ";
+              if (showAsCorrect) {
+                dotClass += "border-green-500 bg-green-500";
+              } else if (wasWrongChoice) {
+                dotClass += "border-red-400 bg-red-400";
+              } else if (isSelected) {
+                dotClass += "border-[#FFD700] bg-[#FFD700]";
+              } else {
+                dotClass += "border-gray-300";
+              }
+
+              return (
+                <div
+                  key={index}
+                  onClick={() => selectAnswer(index)}
+                  className={cardClass}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={dotClass}>
+                      {showAsCorrect && (
+                        <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                      {wasWrongChoice && (
+                        <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                      {isSelected && !isLocked && (
+                        <svg className="w-3.5 h-3.5 text-[#1a1a2e]" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className={`leading-relaxed ${wasWrongChoice ? "text-red-600 line-through" : showAsCorrect ? "text-green-700 font-medium" : "text-[#1a1a2e]"}`}>
+                      {option}
+                    </span>
                   </div>
-                  <span className="text-[#1a1a2e] leading-relaxed">
-                    {option}
-                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+
+          {/* Пояснення після неправильної відповіді */}
+          {locked[currentQuestion] && answers[currentQuestion] !== q.correctAnswer && (
+            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl animate-fade-in">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-500 text-lg flex-shrink-0">💡</span>
+                <p className="text-sm text-gray-700 leading-relaxed">{q.explanation}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Підтвердження правильної відповіді */}
+          {locked[currentQuestion] && answers[currentQuestion] === q.correctAnswer && (
+            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl animate-fade-in">
+              <div className="flex items-center gap-2">
+                <span className="text-green-500 text-lg flex-shrink-0">✓</span>
+                <p className="text-sm text-green-700 font-medium">Правильно!</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

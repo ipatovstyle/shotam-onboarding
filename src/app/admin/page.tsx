@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface EmployeeResult {
   id: string;
@@ -31,6 +31,14 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "passed" | "failed">("all");
+  const [generatingCert, setGeneratingCert] = useState<string | null>(null);
+  const certRef = useRef<HTMLDivElement>(null);
+  const [certData, setCertData] = useState<{
+    fullName: string;
+    score: number;
+    totalQuestions: number;
+    attemptNumber: number;
+  } | null>(null);
 
   const fetchResults = useCallback(async (pwd: string) => {
     setLoading(true);
@@ -58,6 +66,48 @@ export default function AdminPage() {
       fetchResults(saved);
     }
   }, [fetchResults]);
+
+  const downloadCertificate = async (emp: EmployeeResult) => {
+    if (!emp.hasPassed) return;
+    setGeneratingCert(emp.id);
+
+    const passedAttempt = emp.attempts.find((a) => a.passed);
+    setCertData({
+      fullName: emp.full_name,
+      score: passedAttempt?.score || emp.bestScore,
+      totalQuestions: emp.totalQuestions,
+      attemptNumber: emp.passedOnAttempt || 1,
+    });
+
+    // Wait for render
+    await new Promise((r) => setTimeout(r, 100));
+
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      if (!certRef.current) return;
+
+      const canvas = await html2canvas(certRef.current, {
+        scale: 2,
+        backgroundColor: null,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("landscape", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`certificate-shotam-${emp.full_name.replace(/\s+/g, "-")}.pdf`);
+    } catch (err) {
+      console.error("Certificate generation error:", err);
+      alert("Помилка генерації сертифікату");
+    } finally {
+      setGeneratingCert(null);
+      setCertData(null);
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +263,9 @@ export default function AdminPage() {
                   <th className="text-center px-5 py-4 text-sm font-medium text-gray-500">
                     Склав з
                   </th>
+                  <th className="text-center px-5 py-4 text-sm font-medium text-gray-500">
+                    Дії
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -267,12 +320,35 @@ export default function AdminPage() {
                           ? `${emp.passedOnAttempt}-ї спроби`
                           : "—"}
                       </td>
+                      <td className="px-5 py-4 text-center">
+                        {emp.hasPassed && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadCertificate(emp);
+                            }}
+                            disabled={generatingCert === emp.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FFD700] text-[#1a1a2e] rounded-lg text-xs font-medium hover:bg-[#f0c800] transition-colors disabled:opacity-50"
+                          >
+                            {generatingCert === emp.id ? (
+                              "Генерую..."
+                            ) : (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Сертифікат
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </td>
                     </tr>
 
                     {/* Expanded details */}
                     {expandedId === emp.id && emp.attempts.length > 0 && (
                       <tr key={`${emp.id}-details`}>
-                        <td colSpan={6} className="px-5 py-4 bg-gray-50">
+                        <td colSpan={7} className="px-5 py-4 bg-gray-50">
                           <div className="text-sm font-medium text-gray-500 mb-3">
                             Історія спроб
                           </div>
@@ -333,7 +409,7 @@ export default function AdminPage() {
                 {filteredResults.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="text-center py-12 text-gray-400"
                     >
                       Поки що немає результатів
@@ -345,6 +421,66 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+      {/* Hidden certificate template for PDF generation */}
+      {certData && (
+        <div className="fixed -left-[9999px] top-0">
+          <div
+            ref={certRef}
+            className="w-[1120px] h-[790px] relative overflow-hidden flex flex-col items-center justify-center text-white"
+            style={{ padding: "60px", background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)" }}
+          >
+            {/* Decorative borders */}
+            <div className="absolute top-0 left-0 w-full h-2" style={{ background: "#FFD700" }} />
+            <div className="absolute bottom-0 left-0 w-full h-2" style={{ background: "#FFD700" }} />
+            <div className="absolute top-0 left-0 w-2 h-full" style={{ background: "#FFD700" }} />
+            <div className="absolute top-0 right-0 w-2 h-full" style={{ background: "#FFD700" }} />
+
+            {/* Corner decorations */}
+            <div className="absolute top-6 left-6 w-16 h-16 border-t-2 border-l-2" style={{ borderColor: "#FFD700" }} />
+            <div className="absolute top-6 right-6 w-16 h-16 border-t-2 border-r-2" style={{ borderColor: "#FFD700" }} />
+            <div className="absolute bottom-6 left-6 w-16 h-16 border-b-2 border-l-2" style={{ borderColor: "#FFD700" }} />
+            <div className="absolute bottom-6 right-6 w-16 h-16 border-b-2 border-r-2" style={{ borderColor: "#FFD700" }} />
+
+            <div className="text-sm tracking-[0.3em] uppercase mb-4" style={{ color: "#FFD700" }}>
+              Сертифікат
+            </div>
+
+            <h2 className="text-5xl font-bold mb-2" style={{ color: "#FFD700" }}>
+              #ШОТАМ
+            </h2>
+            <p className="text-lg text-gray-300 mb-8">Медіа позитивних новин</p>
+
+            <p className="text-gray-400 text-base mb-2">Цим засвідчується, що</p>
+            <h3
+              className="text-3xl font-bold mb-2"
+              style={{ color: "#FFD700", borderBottom: "2px solid rgba(255,215,0,0.3)", paddingBottom: "8px" }}
+            >
+              {certData.fullName}
+            </h3>
+            <p className="text-gray-400 text-base mb-8">успішно пройшов(ла) онбординг-тест</p>
+
+            <div className="flex gap-12 mb-8">
+              <div className="text-center">
+                <div className="text-3xl font-bold" style={{ color: "#FFD700" }}>
+                  {certData.score}/{certData.totalQuestions}
+                </div>
+                <div className="text-xs text-gray-400 mt-1">правильних відповідей</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold" style={{ color: "#FFD700" }}>
+                  {certData.attemptNumber}
+                </div>
+                <div className="text-xs text-gray-400 mt-1">спроба</div>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-400">
+              {new Date().toLocaleDateString("uk-UA", { day: "numeric", month: "long", year: "numeric" })}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">Попутного вітру в спільному плаванні!</p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
